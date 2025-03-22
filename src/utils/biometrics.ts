@@ -1,4 +1,5 @@
 import { isMobileDevice } from "./deviceDetection";
+import { getUserStoragePrefix } from "./auth";
 
 // Interface for authentication results
 interface AuthResult {
@@ -87,19 +88,22 @@ export const authenticateWithBiometrics = async (
     // Create the WebAuthn credential request options
     const challenge = generateRandomChallenge();
 
+    // Get user-specific storage prefix
+    const storagePrefix = getUserStoragePrefix();
+
     // Create a unique user ID for this app
     // In a real app, this would be tied to the user's account
     const userId =
-      localStorage.getItem("bioNotesUserId") ||
+      localStorage.getItem(`${storagePrefix}userId`) ||
       Math.random().toString(36).substring(2, 15);
 
     // Store the user ID if it's new
-    if (!localStorage.getItem("bioNotesUserId")) {
-      localStorage.setItem("bioNotesUserId", userId);
+    if (!localStorage.getItem(`${storagePrefix}userId`)) {
+      localStorage.setItem(`${storagePrefix}userId`, userId);
     }
 
     // Check if we have a credential ID stored from previous authentication
-    const credentialId = localStorage.getItem("bioNotesCredentialId");
+    const credentialId = localStorage.getItem(`${storagePrefix}credentialId`);
 
     // If we don't have a credential ID, we need to create one first
     if (!credentialId) {
@@ -140,7 +144,10 @@ export const authenticateWithBiometrics = async (
             ...new Uint8Array(credential.rawId as ArrayBuffer),
           ),
         );
-        localStorage.setItem("bioNotesCredentialId", credentialIdBase64);
+        localStorage.setItem(
+          `${storagePrefix}credentialId`,
+          credentialIdBase64,
+        );
 
         return { success: true, error: null };
       } catch (error) {
@@ -188,7 +195,7 @@ export const authenticateWithBiometrics = async (
           (error.name === "NotAllowedError" ||
             error.name === "InvalidStateError")
         ) {
-          localStorage.removeItem("bioNotesCredentialId");
+          localStorage.removeItem(`${storagePrefix}credentialId`);
         }
 
         return {

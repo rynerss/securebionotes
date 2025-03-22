@@ -1,12 +1,22 @@
 import React, { useState, useEffect } from "react";
 import { Button } from "./ui/button";
-import { Fingerprint, Shield, AlertCircle, RefreshCw } from "lucide-react";
+import { Input } from "./ui/input";
+import {
+  Fingerprint,
+  Shield,
+  AlertCircle,
+  RefreshCw,
+  User,
+  Lock,
+  UserPlus,
+} from "lucide-react";
 import BiometricUnavailableDialog from "./BiometricUnavailableDialog";
 import {
   authenticateWithBiometrics,
   checkBiometricAvailability,
   simulateAuthentication,
 } from "../utils/biometrics";
+import { authenticateUser, registerUser, getCurrentUser } from "../utils/auth";
 
 interface LockScreenProps {
   onAuthenticate?: () => void;
@@ -27,8 +37,12 @@ const LockScreen = ({
   const [biometryType, setBiometryType] = useState<string | null>(null);
   const [showBiometricDialog, setShowBiometricDialog] = useState(false);
   const [authAttempts, setAuthAttempts] = useState(0);
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
+  const [isRegistering, setIsRegistering] = useState(false);
+  const [lastLoggedInUser, setLastLoggedInUser] = useState<string | null>(null);
 
-  // Check if biometrics are available on component mount
+  // Check if biometrics are available on component mount and get last logged in user
   useEffect(() => {
     const checkAvailability = async () => {
       const {
@@ -50,9 +64,21 @@ const LockScreen = ({
     };
 
     checkAvailability();
+
+    // Check for last logged in user
+    const currentUser = getCurrentUser();
+    if (currentUser) {
+      setLastLoggedInUser(currentUser);
+      setUsername(currentUser);
+    }
   }, []);
 
-  const handleAuthRequest = async () => {
+  const handleBiometricAuth = async () => {
+    if (!lastLoggedInUser) {
+      setError("Please log in with username and password first");
+      return;
+    }
+
     setAuthenticating(true);
     setError(null);
 
@@ -69,6 +95,44 @@ const LockScreen = ({
       } else {
         setAuthAttempts((prev) => prev + 1);
         setError(result.error || "Authentication failed. Please try again.");
+      }
+    } catch (err) {
+      setAuthenticating(false);
+      setAuthAttempts((prev) => prev + 1);
+      setError("An unexpected error occurred. Please try again.");
+      console.error("Authentication error:", err);
+    }
+  };
+
+  const handleCredentialAuth = async () => {
+    if (!username || !password) {
+      setError("Please enter both username and password");
+      return;
+    }
+
+    setAuthenticating(true);
+    setError(null);
+
+    try {
+      let result;
+
+      if (isRegistering) {
+        result = registerUser(username, password);
+      } else {
+        result = authenticateUser(username, password);
+      }
+
+      setAuthenticating(false);
+
+      if (result.success) {
+        setLastLoggedInUser(username);
+        onAuthenticate();
+      } else {
+        setAuthAttempts((prev) => prev + 1);
+        setError(
+          result.error ||
+            `${isRegistering ? "Registration" : "Authentication"} failed. Please try again.`,
+        );
       }
     } catch (err) {
       setAuthenticating(false);
@@ -158,32 +222,97 @@ const LockScreen = ({
                 <p>{error}</p>
                 {authAttempts > 1 && (
                   <p className="mt-1">
-                    If you're having trouble, make sure biometrics are properly
-                    set up in your device settings.
+                    If you're having trouble, make sure your credentials are
+                    correct.
                   </p>
                 )}
               </div>
             </div>
           )}
 
-          <Button
-            onClick={handleAuthRequest}
-            disabled={authenticating}
-            className="w-full py-6 text-base flex items-center justify-center space-x-2"
-          >
-            <Fingerprint className={authenticating ? "animate-pulse" : ""} />
-            <span>
-              {authenticating
-                ? "Authenticating..."
-                : biometryType === "FaceID"
-                  ? "Authenticate with Face Recognition"
-                  : biometryType === "TouchID" || biometryType === "Fingerprint"
-                    ? "Authenticate with Fingerprint"
-                    : "Authenticate with Biometrics"}
-            </span>
-          </Button>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <div className="relative">
+                <User className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
+                <Input
+                  type="text"
+                  placeholder="Username"
+                  value={username}
+                  onChange={(e) => setUsername(e.target.value)}
+                  className="pl-10"
+                />
+              </div>
+              <div className="relative">
+                <Lock className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
+                <Input
+                  type="password"
+                  placeholder="Password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  className="pl-10"
+                />
+              </div>
+            </div>
+
+            <div className="flex gap-2">
+              <Button
+                onClick={() => {
+                  setIsRegistering(false);
+                  handleCredentialAuth();
+                }}
+                disabled={authenticating}
+                className="flex-1 py-2"
+                variant="outline"
+              >
+                <User className="mr-2 h-4 w-4" />
+                <span>Login</span>
+              </Button>
+
+              <Button
+                onClick={() => {
+                  setIsRegistering(true);
+                  handleCredentialAuth();
+                }}
+                disabled={authenticating}
+                className="flex-1 py-2"
+                variant="outline"
+              >
+                <UserPlus className="mr-2 h-4 w-4" />
+                <span>Register</span>
+              </Button>
+            </div>
+
+            {lastLoggedInUser && (
+              <Button
+                onClick={handleBiometricAuth}
+                disabled={authenticating}
+                className="w-full py-6 text-base flex items-center justify-center space-x-2"
+              >
+                <Fingerprint
+                  className={authenticating ? "animate-pulse" : ""}
+                />
+                <span>
+                  {authenticating
+                    ? "Authenticating..."
+                    : biometryType === "FaceID"
+                      ? "Authenticate with Face Recognition"
+                      : biometryType === "TouchID" ||
+                          biometryType === "Fingerprint"
+                        ? "Authenticate with Fingerprint"
+                        : "Authenticate with Biometrics"}
+                </span>
+              </Button>
+            )}
+          </div>
 
           <p className="text-xs text-center text-gray-500 mt-4">
+            {lastLoggedInUser ? (
+              <>
+                Logged in as <strong>{lastLoggedInUser}</strong>. Your notes are
+                private to your account.
+                <br />
+              </>
+            ) : null}
             Your biometric data never leaves your device.
             <br />
             We use secure authentication methods to protect your privacy.
